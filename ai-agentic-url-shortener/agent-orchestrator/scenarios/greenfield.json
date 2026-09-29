@@ -1,0 +1,4 @@
+{
+  "scenario": "greenfield",
+  "requirement": "Add a bulk URL shortening endpoint that accepts at most 100 URLs and preserves existing single-link behavior."
+}

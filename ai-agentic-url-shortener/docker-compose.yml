@@ -1,0 +1,103 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: shortener
+      POSTGRES_USER: shortener
+      POSTGRES_PASSWORD: shortener
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shortener"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis_data:/data
+
+  shortener-service:
+    build: ./shortener-service
+    environment:
+      DATABASE_URL: jdbc:postgresql://postgres:5432/shortener
+      DATABASE_USER: shortener
+      DATABASE_PASSWORD: shortener
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PUBLIC_BASE_URL: http://localhost:8080
+    ports: ["8080:8080"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  agent-orchestrator:
+    build: ./agent-orchestrator
+    environment:
+      WORKSPACE_ROOT: /app/artifacts
+      SHORTENER_REPO_ROOT: /workspace/shortener-service
+      SHORTENER_BASE_URL: http://shortener-service:8080
+      LIVE_SERVICE_VALIDATION: "true"
+      LLM_ENABLED: "false"
+      OLLAMA_URL: http://ollama:11434
+      MAX_AGENT_RETRIES: 2
+    ports: ["8000:8000"]
+    depends_on:
+      shortener-service:
+        condition: service_healthy
+    volumes:
+      - ./agent-orchestrator/artifacts:/app/artifacts
+      - ./shortener-service:/workspace/shortener-service:ro
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+    depends_on:
+      - shortener-service
+      - agent-orchestrator
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports: ["3000:3000"]
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["llm"]
+    ports: ["11434:11434"]
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  postgres_data:
+  redis_data:
+  grafana_data:
+  ollama_data:

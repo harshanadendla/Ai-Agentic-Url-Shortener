@@ -1,0 +1,4 @@
+{
+  "scenario": "ambiguous",
+  "requirement": "Make analytics better and fast for enterprise users without breaking existing clients."
+}

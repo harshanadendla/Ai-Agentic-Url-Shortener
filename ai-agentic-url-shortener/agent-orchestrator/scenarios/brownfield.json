@@ -1,0 +1,4 @@
+{
+  "scenario": "brownfield",
+  "requirement": "Extend link analytics with daily UTC click buckets using an additive schema migration while preserving existing analytics fields."
+}
